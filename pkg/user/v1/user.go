@@ -1,6 +1,8 @@
 package name
 
 import (
+	"google.golang.org/protobuf/encoding/protojson"
+	
 	userv1 "github.com/tinywideclouds/gen-platform/src/types/user/v1"
 )
 
@@ -33,4 +35,44 @@ func FromProto(proto *userv1.UserPb) (*User, error) {
 		Name:  proto.Name,
 		Email: proto.Email,
 	}, nil
+}
+
+// --- NEW JSON METHODS ---
+
+// MarshalJSON implements the json.Marshaler interface.
+// It marshals the *Protobuf* representation, not the Go struct directly.
+func (u *User) MarshalJSON() ([]byte, error) {
+	// 1. Convert native Go struct to Protobuf struct
+	protoPb := ToProto(u)
+
+	// 2. Marshal the Protobuf struct using protojson
+	return protojson.Marshal(protoPb)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// It unmarshals into the *Protobuf* representation first.
+func (u *User) UnmarshalJSON(data []byte) error {
+	// 1. Unmarshal into a new Protobuf struct
+	var protoPb userv1.UserPb
+	unmarshalOpts := protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}
+	if err := unmarshalOpts.Unmarshal(data, &protoPb); err != nil {
+		return err
+	}
+
+	// 2. Convert from Protobuf to native Go struct
+	native, err := FromProto(&protoPb)
+	if err != nil {
+		return err
+	}
+
+	// 3. Assign the fields to the receiver pointer
+	if native != nil {
+		*u = *native
+	} else {
+		*u = User{}
+	}
+
+	return nil
 }

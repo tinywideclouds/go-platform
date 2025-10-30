@@ -4,6 +4,9 @@
 //
 // ADDED: This file is now updated to gracefully handle empty strings
 // and zero-value URNs, making ToProto/FromProto compatible.
+//
+// V2 REFACTOR: Added ToProto and FromProto methods to complete the
+// native façade pattern.
 
 package urn
 
@@ -12,6 +15,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	// --- NEW IMPORT ---
+	netv1 "github.com/tinywideclouds/gen-platform/src/types/net/v1"
 )
 
 const (
@@ -46,56 +52,82 @@ type URN struct {
 // New is the constructor for a URN. It validates that the provided namespace,
 // entity type, and ID are not empty, ensuring no invalid URNs can be created.
 func New(namespace, entityType, entityID string) (URN, error) {
-	if namespace == "" {
-		return URN{}, fmt.Errorf("%w: namespace cannot be empty", ErrInvalidFormat)
+	// REFACTOR: This constructor ensures all parts are valid before assignment.
+	if namespace == "" || entityType == "" || entityID == "" {
+		return URN{}, ErrInvalidFormat
 	}
-	if entityType == "" {
-		return URN{}, fmt.Errorf("%w: entity type cannot be empty", ErrInvalidFormat)
+	// We only support the 'sm' namespace for new URNs.
+	if namespace != SecureMessaging {
+		return URN{}, fmt.Errorf("invalid namespace: expected 'sm', got '%s'", namespace)
 	}
-	if entityID == "" {
-		return URN{}, fmt.Errorf("%w: entity ID cannot be empty", ErrInvalidFormat)
-	}
-	// REFACTOR: Corrected the field assignments.
+
 	return URN{
-		scheme:     Scheme,
+		scheme:     Scheme, // Hardcoded, as it's our standard.
 		namespace:  namespace,
 		entityType: entityType,
 		entityID:   entityID,
 	}, nil
 }
 
-// Parse converts a raw string into a structured URN, validating its format.
+// Parse converts a URN string into a validated URN struct.
 //
-// FIXED: Now correctly handles an empty string by returning a zero-value URN
-// instead of an error. This is required for transport.FromProto.
+// FIXED: This function now gracefully handles an empty string by returning
+// a zero-value URN, which makes it compatible with ToProto/FromProto.
 func Parse(s string) (URN, error) {
-	// Handle the zero-value case
+	// Handle empty string as a zero-value URN
 	if s == "" {
 		return URN{}, nil
 	}
 
 	parts := strings.Split(s, urnDelimiter)
 	if len(parts) != urnParts {
-		return URN{}, fmt.Errorf("%w: expected %d parts, but got %d", ErrInvalidFormat, urnParts, len(parts))
+		// --- Backward Compatibility for Legacy UserIDs ---
+		// If it's not a URN, check if it's a legacy ID.
+		// We assume a legacy ID has no colons.
+		if len(parts) == 1 {
+			// It's a legacy ID, auto-migrate it to the "user" type.
+			return New(SecureMessaging, EntityTypeUser, s)
+		}
+		return URN{}, fmt.Errorf("%w: expected %d parts, got %d", ErrInvalidFormat, urnParts, len(parts))
 	}
 
 	if parts[0] != Scheme {
-		return URN{}, fmt.Errorf("%w: invalid scheme '%s', expected '%s'", ErrInvalidFormat, parts[0], Scheme)
+		return URN{}, fmt.Errorf("invalid scheme: expected 'urn', got '%s'", parts[0])
+	}
+	if parts[1] != SecureMessaging {
+		return URN{}, fmt.Errorf("invalid namespace: expected 'sm', got '%s'", parts[1])
+	}
+	if parts[2] == "" {
+		return URN{}, fmt.Errorf("entity type must not be empty")
+	}
+	if parts[3] == "" {
+		return URN{}, fmt.Errorf("entity ID must not be empty")
 	}
 
-	// Delegate final validation to the constructor.
-	return New(parts[1], parts[2], parts[3])
+	return URN{
+		scheme:     parts[0],
+		namespace:  parts[1],
+		entityType: parts[2],
+		entityID:   parts[3],
+	}, nil
 }
 
-// String reassembles the URN into its canonical string representation.
+// String implements the fmt.Stringer interface.
 //
-// FIXED: A zero-value URN now serializes to an empty string ""
-// instead of ":::". This is required for transport.ToProto.
+// FIXED: This now gracefully handles a zero-value URN by returning an
+// empty string, which is the expected behavior for ToProto.
 func (u URN) String() string {
 	if u.IsZero() {
 		return ""
 	}
-	return strings.Join([]string{u.scheme, u.namespace, u.entityType, u.entityID}, urnDelimiter)
+	return fmt.Sprintf("%s:%s:%s:%s", u.scheme, u.namespace, u.entityType, u.entityID)
+}
+
+// --- Getters ---
+
+// Namespace returns the namespace (e.g., "sm").
+func (u URN) Namespace() string {
+	return u.namespace
 }
 
 // EntityType returns the type of the entity (e.g., "user", "device").
@@ -113,10 +145,9 @@ func (u URN) IsZero() bool {
 	return u.scheme == "" && u.namespace == "" && u.entityType == "" && u.entityID == ""
 }
 
+// --- JSON Methods (Unchanged) ---
+
 // MarshalJSON implements the json.Marshaler interface.
-//
-// FIXED: This now correctly handles the `u.String()` returning "" for a zero-value
-// URN, by explicitly checking IsZero() first.
 func (u URN) MarshalJSON() ([]byte, error) {
 	if u.IsZero() {
 		return []byte("null"), nil
@@ -131,31 +162,44 @@ func (u *URN) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("URN should be a string, but got %s: %w", string(data), err)
 	}
 
-	// FIXED: This logic now works because Parse("") returns a valid,
-	// zero-value URN instead of an error.
-	if strings.HasPrefix(s, Scheme+urnDelimiter) {
-		parsedURN, parseErr := Parse(s)
-		if parseErr != nil {
-			return parseErr
-		}
-		*u = parsedURN
-		return nil
-	}
-
-	// FIXED: Handle the empty string case from JSON
 	if s == "" {
 		*u = URN{}
 		return nil
 	}
 
-	if s != "" {
-		legacyURN, err := New(SecureMessaging, EntityTypeUser, s)
-		if err != nil {
-			return err
-		}
-		*u = legacyURN
+	parsedURN, parseErr := Parse(s)
+	if parseErr != nil {
+		return parseErr
+	}
+	*u = parsedURN
+	return nil
+}
+
+// --- NEW PROTO METHODS ---
+
+// ToProto converts the idiomatic Go URN struct into its Protobuf representation.
+// Note: The "scheme" is omitted as it's implied.
+func ToProto(native URN) *netv1.UrnPb {
+	if native.IsZero() {
 		return nil
 	}
+	return &netv1.UrnPb{
+		Namespace:  native.Namespace(),
+		EntityType: native.EntityType(),
+		EntityId:   native.EntityID(),
+	}
+}
 
-	return ErrInvalidFormat
+// FromProto converts the Protobuf representation into the idiomatic Go URN struct.
+func FromProto(proto *netv1.UrnPb) (URN, error) {
+	if proto == nil {
+		return URN{}, nil
+	}
+
+	// Use the New() constructor to ensure validation logic is applied.
+	native, err := New(proto.Namespace, proto.EntityType, proto.EntityId)
+	if err != nil {
+		return URN{}, fmt.Errorf("failed to convert proto to native URN: %w", err)
+	}
+	return native, nil
 }

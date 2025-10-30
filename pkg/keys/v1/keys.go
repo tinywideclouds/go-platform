@@ -1,6 +1,9 @@
 package keys
 
 import (
+	// --- NEW IMPORTS ---
+	"google.golang.org/protobuf/encoding/protojson"
+	// ---
 	keysv1 "github.com/tinywideclouds/gen-platform/src/types/key/v1"
 )
 
@@ -33,4 +36,47 @@ func FromProto(proto *keysv1.PublicKeysPb) (*PublicKeys, error) {
 		EncKey: proto.EncKey,
 		SigKey: proto.SigKey,
 	}, nil
+}
+
+// --- NEW JSON METHODS ---
+
+// MarshalJSON implements the json.Marshaler interface.
+// It marshals the *Protobuf* representation, not the Go struct directly.
+func (pk *PublicKeys) MarshalJSON() ([]byte, error) {
+	// 1. Convert native Go struct to Protobuf struct
+	protoPb := ToProto(pk)
+
+	// 2. Marshal the Protobuf struct using protojson
+	// This correctly handles byte arrays as base64, etc.
+	return protojson.Marshal(protoPb)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// It unmarshals into the *Protobuf* representation first.
+func (pk *PublicKeys) UnmarshalJSON(data []byte) error {
+	// 1. Unmarshal into a new Protobuf struct
+	var protoPb keysv1.PublicKeysPb
+	// Use UnmarshalOptions to handle unknown fields gracefully
+	unmarshalOpts := protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}
+	if err := unmarshalOpts.Unmarshal(data, &protoPb); err != nil {
+		return err
+	}
+
+	// 2. Convert from Protobuf to native Go struct
+	native, err := FromProto(&protoPb)
+	if err != nil {
+		return err
+	}
+
+	// 3. Assign the fields to the receiver pointer
+	// (Handle nil case from FromProto)
+	if native != nil {
+		*pk = *native
+	} else {
+		*pk = PublicKeys{} // or set to nil if the receiver was a pointer-to-pointer
+	}
+
+	return nil
 }
