@@ -10,10 +10,11 @@ import (
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
 )
 
+// --- Marshal/Unmarshal Options ---
 var (
 	// protojsonMarshalOptions tells protojson to use camelCase (json_name)
 	protojsonMarshalOptions = &protojson.MarshalOptions{
-		UseProtoNames:   false, // <-- THIS IS THE FIX. false = use camelCase.
+		UseProtoNames:   false, // Use camelCase
 		EmitUnpopulated: false,
 	}
 
@@ -30,10 +31,11 @@ type SecureEnvelopeListPb = smv1.SecureEnvelopeListPb
 
 // SecureEnvelope is the canonical, idiomatic Go struct for a message.
 type SecureEnvelope struct {
-	RecipientID           urn.URN
-	EncryptedData         []byte
-	EncryptedSymmetricKey []byte
-	Signature             []byte
+	// Updated JSON tags to camelCase
+	RecipientID           urn.URN `json:"recipientId"`
+	EncryptedData         []byte  `json:"encryptedData,omitempty"`
+	EncryptedSymmetricKey []byte  `json:"encryptedSymmetricKey,omitempty"`
+	Signature             []byte  `json:"signature,omitempty"`
 }
 
 // ToProto converts the idiomatic Go struct into its Protobuf representation.
@@ -68,21 +70,21 @@ func FromProto(proto *SecureEnvelopePb) (*SecureEnvelope, error) {
 	}, nil
 }
 
-// --- NEW JSON METHODS (Single) ---
+// --- JSON METHODS (Single) ---
 
-// MarshalJSON implements the json.Marshaler interface.
-func (se *SecureEnvelope) MarshalJSON() ([]byte, error) {
-	protoPb := ToProto(se)
-	return protojson.Marshal(protoPb)
+// MarshalJSON implements the json.Marshaler interface for SecureEnvelope.
+//
+// REFACTOR: This now has a VALUE RECEIVER (no *).
+func (se SecureEnvelope) MarshalJSON() ([]byte, error) {
+	protoPb := ToProto(&se)
+	return protojsonMarshalOptions.Marshal(protoPb)
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface.
+// UnmarshalJSON implements the json.Unmarshaler interface for SecureEnvelope.
+// This remains a POINTER RECEIVER (*se) to modify the struct.
 func (se *SecureEnvelope) UnmarshalJSON(data []byte) error {
 	var protoPb SecureEnvelopePb
-	unmarshalOpts := protojson.UnmarshalOptions{
-		DiscardUnknown: true,
-	}
-	if err := unmarshalOpts.Unmarshal(data, &protoPb); err != nil {
+	if err := protojsonUnmarshalOptions.Unmarshal(data, &protoPb); err != nil {
 		return err
 	}
 
@@ -103,7 +105,7 @@ func (se *SecureEnvelope) UnmarshalJSON(data []byte) error {
 
 // SecureEnvelopeList is the idiomatic Go struct for a list of envelopes.
 type SecureEnvelopeList struct {
-	Envelopes []*SecureEnvelope
+	Envelopes []*SecureEnvelope `json:"envelopes,omitempty"`
 }
 
 // ListToProto converts the idiomatic Go list into its Protobuf representation.
@@ -126,30 +128,33 @@ func ListFromProto(proto *SecureEnvelopeListPb) (*SecureEnvelopeList, error) {
 		return nil, nil
 	}
 	nativeEnvelopes := make([]*SecureEnvelope, len(proto.Envelopes))
+	var err error
 	for i, pEnv := range proto.Envelopes {
-		native, err := FromProto(pEnv)
+		nativeEnvelopes[i], err = FromProto(pEnv)
 		if err != nil {
+			// Wrap the error with context about which envelope failed
 			return nil, fmt.Errorf("failed to parse envelope at index %d: %w", i, err)
 		}
-		nativeEnvelopes[i] = native
 	}
 	return &SecureEnvelopeList{
 		Envelopes: nativeEnvelopes,
 	}, nil
 }
 
-// --- NEW JSON METHODS (List) ---
+// --- JSON METHODS (List) ---
 
-// MarshalJSON implements the json.Marshaler interface for the list.
-func (sel *SecureEnvelopeList) MarshalJSON() ([]byte, error) {
-	protoPb := ListToProto(sel)
+// MarshalJSON implements the json.Marshaler interface for SecureEnvelopeList.
+//
+// REFACTOR: This now has a VALUE RECEIVER (no *).
+func (sel SecureEnvelopeList) MarshalJSON() ([]byte, error) {
+	protoPb := ListToProto(&sel)
 	return protojsonMarshalOptions.Marshal(protoPb)
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface for the list.
+// UnmarshalJSON implements the json.Unmarshaler interface for SecureEnvelopeList.
+// This remains a POINTER RECEIVER (*sel) to modify the struct.
 func (sel *SecureEnvelopeList) UnmarshalJSON(data []byte) error {
 	var protoPb SecureEnvelopeListPb
-
 	if err := protojsonUnmarshalOptions.Unmarshal(data, &protoPb); err != nil {
 		return err
 	}

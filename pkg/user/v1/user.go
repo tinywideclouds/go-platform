@@ -1,15 +1,16 @@
 package name
 
 import (
-	"google.golang.org/protobuf/encoding/protojson"
-
 	userv1 "github.com/tinywideclouds/gen-platform/src/types/user/v1"
+	// --- NEW IMPORTS ---
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
+// --- Marshal/Unmarshal Options ---
 var (
 	// protojsonMarshalOptions tells protojson to use camelCase (json_name)
 	protojsonMarshalOptions = &protojson.MarshalOptions{
-		UseProtoNames:   false, // <-- THIS IS THE FIX. false = use camelCase.
+		UseProtoNames:   false, // Use camelCase
 		EmitUnpopulated: false,
 	}
 
@@ -20,9 +21,10 @@ var (
 )
 
 type User struct {
-	Alias string
-	Name  string
-	Email string
+	// Updated JSON tags to camelCase
+	Alias string `json:"alias,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
 }
 
 // ToProto converts the idiomatic Go struct into its Protobuf representation.
@@ -50,35 +52,36 @@ func FromProto(proto *userv1.UserPb) (*User, error) {
 	}, nil
 }
 
-// --- NEW JSON METHODS ---
+// --- JSON METHODS ---
 
 // MarshalJSON implements the json.Marshaler interface.
-// It marshals the *Protobuf* representation, not the Go struct directly.
-func (u *User) MarshalJSON() ([]byte, error) {
+//
+// REFACTOR: This now has a VALUE RECEIVER (no *).
+// This makes the marshaling robust and linter-friendly.
+func (u User) MarshalJSON() ([]byte, error) {
 	// 1. Convert native Go struct to Protobuf struct
-	protoPb := ToProto(u)
+	// Note: We pass a pointer to ToProto
+	protoPb := ToProto(&u)
 
-	// 2. Marshal the Protobuf struct using protojson
+	// 2. Marshal using our camelCase options
 	return protojsonMarshalOptions.Marshal(protoPb)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
-// It unmarshals into the *Protobuf* representation first.
+// This remains a POINTER RECEIVER (*u), which is correct
+// because it needs to modify the struct it's called on.
 func (u *User) UnmarshalJSON(data []byte) error {
-	// 1. Unmarshal into a new Protobuf struct
 	var protoPb userv1.UserPb
-
+	// Use our UnmarshalOptions
 	if err := protojsonUnmarshalOptions.Unmarshal(data, &protoPb); err != nil {
 		return err
 	}
 
-	// 2. Convert from Protobuf to native Go struct
 	native, err := FromProto(&protoPb)
 	if err != nil {
 		return err
 	}
 
-	// 3. Assign the fields to the receiver pointer
 	if native != nil {
 		*u = *native
 	} else {
