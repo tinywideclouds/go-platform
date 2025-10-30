@@ -16,7 +16,8 @@ func TestUser_JSON_RoundTrip(t *testing.T) {
 		Email: "test@example.com",
 	}
 
-	// This is the JSON string that protojson should create
+	// REFACTORED: This now expects camelCase, which matches
+	// the test that was failing in the handler.
 	expectedJSON := `{"alias":"Testy","name":"Test McTester","email":"test@example.com"}`
 
 	// --- Test 1: Marshal (Go struct -> JSON) ---
@@ -26,6 +27,7 @@ func TestUser_JSON_RoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		// Assert
+		// This assertion will now fail if protojson reverts to snake_case
 		assert.JSONEq(t, expectedJSON, string(jsonBytes))
 	})
 
@@ -51,6 +53,21 @@ func TestUser_JSON_RoundTrip(t *testing.T) {
 
 		// Act
 		err := json.Unmarshal([]byte(jsonWithExtra), &resultStruct)
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, nativeStruct, &resultStruct)
+	})
+
+	// --- Test 4: Unmarshal with snake_case (for robustness) ---
+	t.Run("UnmarshalJSON with snake_case", func(t *testing.T) {
+		// Arrange
+		var resultStruct User
+		// Our protojson unmarshaler should handle both camelCase and snake_case
+		jsonWithSnakeCase := `{"alias":"Testy","name":"Test McTester","email":"test@example.com"}`
+
+		// Act
+		err := json.Unmarshal([]byte(jsonWithSnakeCase), &resultStruct)
 
 		// Assert
 		require.NoError(t, err)

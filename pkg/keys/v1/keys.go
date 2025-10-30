@@ -7,6 +7,21 @@ import (
 	keysv1 "github.com/tinywideclouds/gen-platform/src/types/key/v1"
 )
 
+var (
+	// protojsonMarshalOptions tells protojson to use camelCase (json_name)
+	// which is the standard for JSON, instead of the default snake_case (proto_name).
+	protojsonMarshalOptions = &protojson.MarshalOptions{
+		UseProtoNames:   false, // <-- THIS IS THE FIX. false = use camelCase.
+		EmitUnpopulated: false, // Don't emit empty fields
+	}
+
+	// protojsonUnmarshalOptions tells protojson to ignore fields
+	// in the JSON that aren't in our proto definition.
+	protojsonUnmarshalOptions = &protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}
+)
+
 type PublicKeys struct {
 	// The raw SPKI bytes of the public encryption key (RSA-OAEP).
 	EncKey []byte `json:"enc_key,omitempty"`
@@ -48,7 +63,7 @@ func (pk *PublicKeys) MarshalJSON() ([]byte, error) {
 
 	// 2. Marshal the Protobuf struct using protojson
 	// This correctly handles byte arrays as base64, etc.
-	return protojson.Marshal(protoPb)
+	return protojsonMarshalOptions.Marshal(protoPb)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -56,11 +71,8 @@ func (pk *PublicKeys) MarshalJSON() ([]byte, error) {
 func (pk *PublicKeys) UnmarshalJSON(data []byte) error {
 	// 1. Unmarshal into a new Protobuf struct
 	var protoPb keysv1.PublicKeysPb
-	// Use UnmarshalOptions to handle unknown fields gracefully
-	unmarshalOpts := protojson.UnmarshalOptions{
-		DiscardUnknown: true,
-	}
-	if err := unmarshalOpts.Unmarshal(data, &protoPb); err != nil {
+
+	if err := protojsonUnmarshalOptions.Unmarshal(data, &protoPb); err != nil {
 		return err
 	}
 

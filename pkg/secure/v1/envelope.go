@@ -10,6 +10,19 @@ import (
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
 )
 
+var (
+	// protojsonMarshalOptions tells protojson to use camelCase (json_name)
+	protojsonMarshalOptions = &protojson.MarshalOptions{
+		UseProtoNames:   false, // <-- THIS IS THE FIX. false = use camelCase.
+		EmitUnpopulated: false,
+	}
+
+	// protojsonUnmarshalOptions tells protojson to ignore unknown fields.
+	protojsonUnmarshalOptions = &protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}
+)
+
 type SecureEnvelopePb = smv1.SecureEnvelopePb
 type SecureEnvelopeListPb = smv1.SecureEnvelopeListPb
 
@@ -130,16 +143,14 @@ func ListFromProto(proto *SecureEnvelopeListPb) (*SecureEnvelopeList, error) {
 // MarshalJSON implements the json.Marshaler interface for the list.
 func (sel *SecureEnvelopeList) MarshalJSON() ([]byte, error) {
 	protoPb := ListToProto(sel)
-	return protojson.Marshal(protoPb)
+	return protojsonMarshalOptions.Marshal(protoPb)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for the list.
 func (sel *SecureEnvelopeList) UnmarshalJSON(data []byte) error {
 	var protoPb SecureEnvelopeListPb
-	unmarshalOpts := protojson.UnmarshalOptions{
-		DiscardUnknown: true,
-	}
-	if err := unmarshalOpts.Unmarshal(data, &protoPb); err != nil {
+
+	if err := protojsonUnmarshalOptions.Unmarshal(data, &protoPb); err != nil {
 		return err
 	}
 

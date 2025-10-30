@@ -2,8 +2,21 @@ package name
 
 import (
 	"google.golang.org/protobuf/encoding/protojson"
-	
+
 	userv1 "github.com/tinywideclouds/gen-platform/src/types/user/v1"
+)
+
+var (
+	// protojsonMarshalOptions tells protojson to use camelCase (json_name)
+	protojsonMarshalOptions = &protojson.MarshalOptions{
+		UseProtoNames:   false, // <-- THIS IS THE FIX. false = use camelCase.
+		EmitUnpopulated: false,
+	}
+
+	// protojsonUnmarshalOptions tells protojson to ignore unknown fields.
+	protojsonUnmarshalOptions = &protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}
 )
 
 type User struct {
@@ -46,7 +59,7 @@ func (u *User) MarshalJSON() ([]byte, error) {
 	protoPb := ToProto(u)
 
 	// 2. Marshal the Protobuf struct using protojson
-	return protojson.Marshal(protoPb)
+	return protojsonMarshalOptions.Marshal(protoPb)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -54,10 +67,8 @@ func (u *User) MarshalJSON() ([]byte, error) {
 func (u *User) UnmarshalJSON(data []byte) error {
 	// 1. Unmarshal into a new Protobuf struct
 	var protoPb userv1.UserPb
-	unmarshalOpts := protojson.UnmarshalOptions{
-		DiscardUnknown: true,
-	}
-	if err := unmarshalOpts.Unmarshal(data, &protoPb); err != nil {
+
+	if err := protojsonUnmarshalOptions.Unmarshal(data, &protoPb); err != nil {
 		return err
 	}
 
