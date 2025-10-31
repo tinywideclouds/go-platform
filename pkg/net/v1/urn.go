@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	// --- NEW IMPORT ---
-	netv1 "github.com/tinywideclouds/gen-platform/src/types/net/v1"
+	netv1 "github.com/tinywideclouds/gen-platform/go/types/net/v1"
 )
 
 const (

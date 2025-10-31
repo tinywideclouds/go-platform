@@ -1,7 +1,7 @@
 package name
 
 import (
-	userv1 "github.com/tinywideclouds/gen-platform/src/types/user/v1"
+	userv1 "github.com/tinywideclouds/gen-platform/go/types/user/v1"
 	// --- NEW IMPORTS ---
 	"google.golang.org/protobuf/encoding/protojson"
 )

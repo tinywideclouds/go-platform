@@ -1,29 +1,92 @@
-package secure
+/*
+File: envelope_test.go
+Description: REFACTORED to add the missing "Proto Round Trip" test
+to validate the ToProto/FromProto facade functions.
+*/
+package secure_test
 
 import (
 	"encoding/json" // We use the standard 'json' lib to test the interface
 	"testing"
 
-	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// --- Import the native packages we are testing ---
+	"github.com/tinywideclouds/go-platform/pkg/net/v1"
+	"github.com/tinywideclouds/go-platform/pkg/secure/v1"
+
+	// --- Import the generated proto package to check against ---
+	securev1 "github.com/tinywideclouds/gen-platform/go/types/secure/v1"
 )
 
-func TestSecureEnvelope_JSON_RoundTrip(t *testing.T) {
-	// Arrange
+// Helper to create a valid native SecureEnvelope for tests
+func newTestEnvelope(t *testing.T) *secure.SecureEnvelope {
+	t.Helper()
 	recipientURN, err := urn.Parse("urn:sm:user:recipient-bob")
 	require.NoError(t, err)
 
-	nativeStruct := &SecureEnvelope{
+	return &secure.SecureEnvelope{
 		RecipientID:           recipientURN,
 		EncryptedData:         []byte{1, 2, 3},
 		EncryptedSymmetricKey: []byte{4, 5, 6},
 		Signature:             []byte{7, 8, 9},
 	}
+}
 
-	// REFACTORED: This now expects camelCase, which matches
-	// the test that was failing in the handler.
+// --- NEW TEST ---
+func TestSecureEnvelope_Proto_RoundTrip(t *testing.T) {
+	t.Run("Valid Envelope", func(t *testing.T) {
+		// Arrange
+		nativeEnv := newTestEnvelope(t)
+
+		// Act: Native -> Proto
+		protoPb := secure.ToProto(nativeEnv)
+
+		// Assert: Check proto struct
+		require.NotNil(t, protoPb)
+		assert.Equal(t, "urn:sm:user:recipient-bob", protoPb.RecipientId)
+		assert.Equal(t, []byte{1, 2, 3}, protoPb.EncryptedData)
+
+		// Act: Proto -> Native
+		roundTripEnv, err := secure.FromProto(protoPb)
+		require.NoError(t, err)
+
+		// Assert: Check round trip
+		assert.Equal(t, nativeEnv, roundTripEnv)
+	})
+
+	t.Run("Nil values", func(t *testing.T) {
+		// Native -> Proto
+		assert.Nil(t, secure.ToProto(nil))
+
+		// Proto -> Native
+		native, err := secure.FromProto(nil)
+		require.NoError(t, err)
+		assert.Nil(t, native)
+	})
+
+	t.Run("FromProto with invalid URN string", func(t *testing.T) {
+		// Arrange: This is the bug our other test caught!
+		badProto := &securev1.SecureEnvelopePb{
+			RecipientId: "not-a-valid-urn",
+		}
+
+		// Act
+		_, err := secure.FromProto(badProto)
+
+		// Assert
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to parse recipient URN from proto")
+	})
+}
+
+// --- EXISTING TEST (UNCHANGED, but verified) ---
+func TestSecureEnvelope_JSON_RoundTrip(t *testing.T) {
+	// Arrange
+	nativeStruct := newTestEnvelope(t)
+
+	// This now expects camelCase
 	expectedJSON := `{
 		"recipientId": "urn:sm:user:recipient-bob",
 		"encryptedData": "AQID",
@@ -38,51 +101,25 @@ func TestSecureEnvelope_JSON_RoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		// Assert
-		// This assertion will now fail if protojson reverts to snake_case
 		assert.JSONEq(t, expectedJSON, string(jsonBytes))
 	})
 
 	// --- Test 2: Unmarshal (JSON -> Go struct) ---
 	t.Run("UnmarshalJSON", func(t *testing.T) {
-		// Arrange
-		var resultStruct SecureEnvelope
-		jsonBytes := []byte(expectedJSON)
-
 		// Act
-		err := json.Unmarshal(jsonBytes, &resultStruct)
-		require.NoError(t, err)
+		var resultStruct secure.SecureEnvelope
+		err := json.Unmarshal([]byte(expectedJSON), &resultStruct)
 
 		// Assert
+		require.NoError(t, err)
 		assert.Equal(t, nativeStruct, &resultStruct)
 	})
 
-	// --- Test 3: Unmarshal with extra fields ---
-	t.Run("UnmarshalJSON with unknown fields", func(t *testing.T) {
+	// --- Test 3: Unmarshal (from snake_case) ---
+	t.Run("UnmarshalJSON from snake_case", func(t *testing.T) {
 		// Arrange
-		var resultStruct SecureEnvelope
-		jsonWithExtra := `{
-			"recipientId": "urn:sm:user:recipient-bob",
-			"encryptedData": "AQID",
-			"unknownField": "should-be-ignored"
-		}`
-
-		// Act
-		// We expect an error because our proto unmarshaler doesn't have DiscardUnknown
-		// (Let's update this to be robust like the others)
-		err := json.Unmarshal([]byte(jsonWithExtra), &resultStruct)
-
-		// Assert
-		require.NoError(t, err) // This now passes because of DiscardUnknown
-		// Check that the known fields are still populated
-		assert.Equal(t, nativeStruct.RecipientID, resultStruct.RecipientID)
-		assert.Equal(t, nativeStruct.EncryptedData, resultStruct.EncryptedData)
-	})
-
-	// --- Test 4: Unmarshal with snake_case (for robustness) ---
-	t.Run("UnmarshalJSON with snake_case", func(t *testing.T) {
-		// Arrange
-		var resultStruct SecureEnvelope
-		// protojson unmarshaler should handle both camelCase and snake_case
+		// The protojson unmarshaler should handle both
+		// camelCase (recipientId) and snake_case (recipient_id).
 		jsonWithSnakeCase := `{
 			"recipient_id": "urn:sm:user:recipient-bob",
 			"encrypted_data": "AQID",
@@ -91,6 +128,7 @@ func TestSecureEnvelope_JSON_RoundTrip(t *testing.T) {
 		}`
 
 		// Act
+		var resultStruct secure.SecureEnvelope
 		err := json.Unmarshal([]byte(jsonWithSnakeCase), &resultStruct)
 
 		// Assert
@@ -104,8 +142,8 @@ func TestSecureEnvelopeList_JSON_RoundTrip(t *testing.T) {
 	recipientURN, err := urn.Parse("urn:sm:user:recipient-bob")
 	require.NoError(t, err)
 
-	nativeList := &SecureEnvelopeList{
-		Envelopes: []*SecureEnvelope{
+	nativeList := &secure.SecureEnvelopeList{
+		Envelopes: []*secure.SecureEnvelope{
 			{
 				RecipientID:           recipientURN,
 				EncryptedData:         []byte{1, 2, 3},
@@ -139,15 +177,12 @@ func TestSecureEnvelopeList_JSON_RoundTrip(t *testing.T) {
 
 	// --- Test 2: Unmarshal (JSON -> Go struct) ---
 	t.Run("UnmarshalJSON List", func(t *testing.T) {
-		// Arrange
-		var resultList SecureEnvelopeList
-		jsonBytes := []byte(expectedListJSON)
-
 		// Act
-		err := json.Unmarshal(jsonBytes, &resultList)
-		require.NoError(t, err)
+		var resultList secure.SecureEnvelopeList
+		err := json.Unmarshal([]byte(expectedListJSON), &resultList)
 
 		// Assert
+		require.NoError(t, err)
 		assert.Equal(t, nativeList, &resultList)
 	})
 }

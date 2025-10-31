@@ -17,7 +17,7 @@ import (
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
 
 	// --- NEW IMPORT ---
-	netv1 "github.com/tinywideclouds/gen-platform/src/types/net/v1"
+	netv1 "github.com/tinywideclouds/gen-platform/go/types/net/v1"
 )
 
 // TestNewURN validates the behavior of the new constructor function.

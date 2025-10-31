@@ -1,7 +1,7 @@
 package keys
 
 import (
-	keysv1 "github.com/tinywideclouds/gen-platform/src/types/key/v1"
+	keysv1 "github.com/tinywideclouds/gen-platform/go/types/keys/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
