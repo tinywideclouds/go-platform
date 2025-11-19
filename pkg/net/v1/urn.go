@@ -15,7 +15,7 @@ const (
 	// Scheme is the required scheme for all URNs in the system.
 	Scheme = "urn"
 
-	// --- Namespaces ---
+	// --- Standard Namespaces (Helpers) ---
 	// SecureMessaging is the legacy/core namespace ("sm").
 	SecureMessaging = "sm"
 	// AuthNamespace is for federated identities ("auth").
@@ -46,19 +46,11 @@ type URN struct {
 	entityID   string
 }
 
-// New is the constructor for a URN. It validates that the provided namespace,
-// entity type, and ID are not empty, and checks against allowed namespaces.
+// New is the constructor for a URN.
+// REFACTOR: Removed namespace validation. This is now a general-purpose URN container.
 func New(namespace, entityType, entityID string) (URN, error) {
 	if namespace == "" || entityType == "" || entityID == "" {
 		return URN{}, ErrInvalidFormat
-	}
-
-	// FIX: Allow 'sm', 'auth', or 'lookup' namespaces.
-	switch namespace {
-	case SecureMessaging, AuthNamespace, LookupNamespace:
-		// Valid
-	default:
-		return URN{}, fmt.Errorf("invalid namespace: expected 'sm', 'auth', or 'lookup', got '%s'", namespace)
 	}
 
 	return URN{
@@ -79,6 +71,8 @@ func Parse(s string) (URN, error) {
 	parts := strings.Split(s, urnDelimiter)
 	if len(parts) != urnParts {
 		// --- Backward Compatibility for Legacy UserIDs ---
+		// If only one part (e.g. "user-123"), auto-upgrade to urn:sm:user:user-123
+		// We default to 'sm' for legacy support, but new URNs can be anything.
 		if len(parts) == 1 {
 			return New(SecureMessaging, EntityTypeUser, s)
 		}
@@ -89,7 +83,7 @@ func Parse(s string) (URN, error) {
 		return URN{}, fmt.Errorf("invalid scheme: expected 'urn', got '%s'", parts[0])
 	}
 
-	// Use the New constructor to validate the namespace and parts
+	// Pass to New() for validation (checking empty strings)
 	return New(parts[1], parts[2], parts[3])
 }
 

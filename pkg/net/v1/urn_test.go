@@ -15,9 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
-
-	// --- NEW IMPORT ---
-	netv1 "github.com/tinywideclouds/gen-platform/go/types/net/v1"
 )
 
 // TestNewURN validates the behavior of the new constructor function.
@@ -28,24 +25,36 @@ func TestNewURN(t *testing.T) {
 		assert.Equal(t, "urn:sm:user:user-123", u.String())
 	})
 
-	// --- NEW TEST CASES ---
 	t.Run("Valid Auth URN", func(t *testing.T) {
 		u, err := urn.New(urn.AuthNamespace, "google", "123456")
 		require.NoError(t, err)
 		assert.Equal(t, "urn:auth:google:123456", u.String())
 	})
 
-	t.Run("Valid Lookup URN", func(t *testing.T) {
-		u, err := urn.New(urn.LookupNamespace, "email", "bob@test.com")
+	// --- NEW: Verify Arbitrary Namespace ---
+	t.Run("Arbitrary Namespace", func(t *testing.T) {
+		u, err := urn.New("custom-ns", "widget", "id-999")
 		require.NoError(t, err)
-		assert.Equal(t, "urn:lookup:email:bob@test.com", u.String())
+		assert.Equal(t, "urn:custom-ns:widget:id-999", u.String())
 	})
-	// ----------------------
 
-	t.Run("Invalid Namespace", func(t *testing.T) {
-		_, err := urn.New("other", "user", "user-123")
+	// Validation Checks (Namespace must not be empty)
+	t.Run("Empty Namespace", func(t *testing.T) {
+		_, err := urn.New("", "user", "user-123")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid namespace")
+		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
+	})
+
+	t.Run("Empty Entity Type", func(t *testing.T) {
+		_, err := urn.New(urn.SecureMessaging, "", "user-123")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
+	})
+
+	t.Run("Empty Entity ID", func(t *testing.T) {
+		_, err := urn.New(urn.SecureMessaging, "user", "")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
 	})
 }
 
@@ -63,10 +72,24 @@ func TestParseURN(t *testing.T) {
 		assert.Equal(t, "auth", u.Namespace())
 	})
 
-	t.Run("Invalid Namespace", func(t *testing.T) {
-		_, err := urn.Parse("urn:random:user:id")
+	// --- NEW: Arbitrary parsing ---
+	t.Run("Arbitrary Namespace", func(t *testing.T) {
+		u, err := urn.Parse("urn:random:user:id")
+		require.NoError(t, err)
+		assert.Equal(t, "urn:random:user:id", u.String())
+		assert.Equal(t, "random", u.Namespace())
+	})
+
+	t.Run("Invalid Scheme", func(t *testing.T) {
+		_, err := urn.Parse("http:sm:user:user-123")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid namespace")
+		assert.Contains(t, err.Error(), "invalid scheme")
+	})
+
+	t.Run("Invalid Format - Too Few Parts", func(t *testing.T) {
+		_, err := urn.Parse("urn:sm:user")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
 	})
 }
 
@@ -210,19 +233,4 @@ func TestURN_Proto_RoundTrip(t *testing.T) {
 		assert.True(t, roundTripURN.IsZero())
 	})
 
-	t.Run("Invalid Proto -> Native (validation fail)", func(t *testing.T) {
-		// Arrange
-		invalidProto := &netv1.UrnPb{
-			Namespace:  "invalid-namespace", // This should fail our New() validator
-			EntityType: "user",
-			EntityId:   "test",
-		}
-
-		// Act
-		_, err := urn.FromProto(invalidProto)
-
-		// Assert
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid namespace")
-	})
 }
