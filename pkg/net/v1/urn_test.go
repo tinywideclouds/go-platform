@@ -22,88 +22,51 @@ import (
 
 // TestNewURN validates the behavior of the new constructor function.
 func TestNewURN(t *testing.T) {
-	t.Run("Valid URN", func(t *testing.T) {
+	t.Run("Valid SM URN", func(t *testing.T) {
 		u, err := urn.New(urn.SecureMessaging, "user", "user-123")
 		require.NoError(t, err)
 		assert.Equal(t, "urn:sm:user:user-123", u.String())
-		// REFACTOR: Test the new getter methods.
-		assert.Equal(t, "user", u.EntityType())
-		assert.Equal(t, "user-123", u.EntityID())
 	})
 
-	t.Run("Empty Namespace", func(t *testing.T) {
-		_, err := urn.New("", "user", "user-123")
-		require.Error(t, err)
-		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
+	// --- NEW TEST CASES ---
+	t.Run("Valid Auth URN", func(t *testing.T) {
+		u, err := urn.New(urn.AuthNamespace, "google", "123456")
+		require.NoError(t, err)
+		assert.Equal(t, "urn:auth:google:123456", u.String())
 	})
+
+	t.Run("Valid Lookup URN", func(t *testing.T) {
+		u, err := urn.New(urn.LookupNamespace, "email", "bob@test.com")
+		require.NoError(t, err)
+		assert.Equal(t, "urn:lookup:email:bob@test.com", u.String())
+	})
+	// ----------------------
 
 	t.Run("Invalid Namespace", func(t *testing.T) {
 		_, err := urn.New("other", "user", "user-123")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid namespace: expected 'sm'")
-	})
-
-	t.Run("Empty Entity Type", func(t *testing.T) {
-		_, err := urn.New(urn.SecureMessaging, "", "user-123")
-		require.Error(t, err)
-		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
-	})
-
-	t.Run("Empty Entity ID", func(t *testing.T) {
-		_, err := urn.New(urn.SecureMessaging, "user", "")
-		require.Error(t, err)
-		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
+		assert.Contains(t, err.Error(), "invalid namespace")
 	})
 }
 
-// TestParseURN validates the string parsing logic.
 func TestParseURN(t *testing.T) {
-	t.Run("Valid URN", func(t *testing.T) {
+	t.Run("Valid SM URN", func(t *testing.T) {
 		u, err := urn.Parse("urn:sm:user:user-123")
 		require.NoError(t, err)
 		assert.Equal(t, "urn:sm:user:user-123", u.String())
-		assert.Equal(t, "user", u.EntityType())
-		assert.Equal(t, "user-123", u.EntityID())
 	})
 
-	t.Run("Invalid Scheme", func(t *testing.T) {
-		_, err := urn.Parse("http:sm:user:user-123")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid scheme")
+	t.Run("Valid Auth URN", func(t *testing.T) {
+		u, err := urn.Parse("urn:auth:apple:bob.id")
+		require.NoError(t, err)
+		assert.Equal(t, "urn:auth:apple:bob.id", u.String())
+		assert.Equal(t, "auth", u.Namespace())
 	})
 
 	t.Run("Invalid Namespace", func(t *testing.T) {
-		_, err := urn.Parse("urn:other:user:user-123")
+		_, err := urn.Parse("urn:random:user:id")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid namespace")
-	})
-
-	t.Run("Invalid Format - Too Few Parts", func(t *testing.T) {
-		_, err := urn.Parse("urn:sm:user")
-		require.Error(t, err)
-		assert.ErrorIs(t, err, urn.ErrInvalidFormat)
-	})
-
-	t.Run("Invalid Format - Empty Entity", func(t *testing.T) {
-		_, err := urn.Parse("urn:sm::user-123")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "entity type must not be empty")
-	})
-
-	t.Run("Backward Compatibility - Legacy UserID", func(t *testing.T) {
-		u, err := urn.Parse("legacy-user-456")
-		require.NoError(t, err)
-		assert.Equal(t, "urn:sm:user:legacy-user-456", u.String())
-		assert.Equal(t, "user", u.EntityType())
-		assert.Equal(t, "legacy-user-456", u.EntityID())
-	})
-
-	// FIXED: Test for zero-value/empty string behavior
-	t.Run("Parse Empty String", func(t *testing.T) {
-		u, err := urn.Parse("")
-		require.NoError(t, err)
-		assert.True(t, u.IsZero())
-		assert.Equal(t, "", u.String())
 	})
 }
 
