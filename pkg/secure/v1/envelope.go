@@ -11,6 +11,7 @@ import (
 
 	// --- NEW IMPORTS ---
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	// ---
 	smv1 "github.com/tinywideclouds/gen-platform/go/types/secure/v1"
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
@@ -43,7 +44,7 @@ type SecureEnvelope struct {
 	EncryptedSymmetricKey []byte  `json:"encryptedSymmetricKey,omitempty"`
 	Signature             []byte  `json:"signature,omitempty"`
 	IsEphemeral           bool    `json:"isEphemeral,omitempty"`
-	Priority              *int32  `json:"priority,omitempty"`
+	Priority              int32   `json:"priority,omitempty"`
 }
 
 // ToProto converts the idiomatic Go struct into its Protobuf representation.
@@ -61,32 +62,30 @@ func ToProto(native *SecureEnvelope) *SecureEnvelopePb {
 		EncryptedSymmetricKey: native.EncryptedSymmetricKey,
 		Signature:             native.Signature,
 		IsEphemeral:           native.IsEphemeral,
-		Priority:              native.Priority,
+		Priority:              proto.Int32(native.Priority),
 	}
 }
 
 // FromProto converts the Protobuf representation into the idiomatic Go struct.
-func FromProto(proto *SecureEnvelopePb) (*SecureEnvelope, error) {
-	if proto == nil {
+func FromProto(native *SecureEnvelopePb) (*SecureEnvelope, error) {
+	if native == nil {
 		return nil, nil
 	}
 
-	// --- THIS IS THE FIX ---
 	// 1. The proto.RecipientId is a STRING, so we must use urn.Parse.
 	// 2. We MUST check the error it returns. This is what the test caught.
-	recipient, err := urn.Parse(proto.RecipientId)
+	recipient, err := urn.Parse(native.GetRecipientId())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse recipient URN from proto: %w", err)
 	}
-	// --- END FIX ---
 
 	return &SecureEnvelope{
 		RecipientID:           recipient,
-		EncryptedData:         proto.EncryptedData,
-		EncryptedSymmetricKey: proto.EncryptedSymmetricKey,
-		Signature:             proto.Signature,
-		IsEphemeral:           proto.IsEphemeral,
-		Priority:              proto.Priority,
+		EncryptedData:         native.GetEncryptedData(),
+		EncryptedSymmetricKey: native.GetEncryptedSymmetricKey(),
+		Signature:             native.GetSignature(),
+		IsEphemeral:           native.GetIsEphemeral(),
+		Priority:              native.GetPriority(),
 	}, nil
 }
 
