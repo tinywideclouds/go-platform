@@ -43,6 +43,7 @@ type SecureEnvelope struct {
 	EncryptedSymmetricKey []byte  `json:"encryptedSymmetricKey,omitempty"`
 	Signature             []byte  `json:"signature,omitempty"`
 	IsEphemeral           bool    `json:"isEphemeral,omitempty"`
+	Priority              *int32  `json:"priority,omitempty"`
 }
 
 // ToProto converts the idiomatic Go struct into its Protobuf representation.
@@ -60,6 +61,7 @@ func ToProto(native *SecureEnvelope) *SecureEnvelopePb {
 		EncryptedSymmetricKey: native.EncryptedSymmetricKey,
 		Signature:             native.Signature,
 		IsEphemeral:           native.IsEphemeral,
+		Priority:              native.Priority,
 	}
 }
 
@@ -84,6 +86,7 @@ func FromProto(proto *SecureEnvelopePb) (*SecureEnvelope, error) {
 		EncryptedSymmetricKey: proto.EncryptedSymmetricKey,
 		Signature:             proto.Signature,
 		IsEphemeral:           proto.IsEphemeral,
+		Priority:              proto.Priority,
 	}, nil
 }
 
