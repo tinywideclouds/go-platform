@@ -1,16 +1,34 @@
-// Package transport provides Go-native wrappers for Protobuf message types.
+// --- File: pkg/notification/v1/notification.go ---
+// Package notification provides Go-native wrappers for Protobuf message types.
+// It implements the Facade pattern to allow standard encoding/json usage
+// while leveraging protojson for correct serialization behavior.
 package notification
 
 import (
 	"fmt"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	smv1 "github.com/tinywideclouds/gen-platform/go/types/notification/v1"
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
 )
 
+// --- Marshal/Unmarshal Options ---
+var (
+	// protojsonMarshalOptions tells protojson to use camelCase (not proto_names)
+	protojsonMarshalOptions = &protojson.MarshalOptions{
+		UseProtoNames:   false,
+		EmitUnpopulated: false,
+	}
+
+	// protojsonUnmarshalOptions tells protojson to ignore unknown fields,
+	// making the unmarshaller forward-compatible.
+	protojsonUnmarshalOptions = &protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}
+)
+
 // Re-export the Protobuf types with convenient aliases.
-// Any project importing this 'transport' package can now use these types
-// without needing to import the long Protobuf package path.
 type NotificationRequestPb = smv1.NotificationRequestPb
 type DeviceTokenPb = smv1.DeviceTokenPb
 type NotificationRequestPbContent = smv1.NotificationRequestPb_Content
@@ -100,4 +118,34 @@ func NotificationRequestFromProto(protoReq *NotificationRequestPb) (*Notificatio
 		Content:     nativeContent,
 		DataPayload: protoReq.GetDataPayload(),
 	}, nil
+}
+
+// --- JSON METHODS ---
+
+// MarshalJSON implements the json.Marshaler interface.
+// It converts the native struct to Proto and then uses protojson for serialization.
+// We use a VALUE RECEIVER (nr) to allow marshalling direct values or pointers.
+func (nr NotificationRequest) MarshalJSON() ([]byte, error) {
+	protoPb := NotificationRequestToProto(&nr)
+	return protojsonMarshalOptions.Marshal(protoPb)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// It parses JSON into a Proto message, then converts it back to the native struct.
+// We use a POINTER RECEIVER (*nr) because we must modify the struct.
+func (nr *NotificationRequest) UnmarshalJSON(data []byte) error {
+	var protoPb NotificationRequestPb
+	if err := protojsonUnmarshalOptions.Unmarshal(data, &protoPb); err != nil {
+		return err
+	}
+	native, err := NotificationRequestFromProto(&protoPb)
+	if err != nil {
+		return err
+	}
+	if native != nil {
+		*nr = *native
+	} else {
+		*nr = NotificationRequest{}
+	}
+	return nil
 }
