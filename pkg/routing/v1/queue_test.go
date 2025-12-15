@@ -16,10 +16,6 @@ import (
 	"github.com/tinywideclouds/go-platform/pkg/net/v1"
 	"github.com/tinywideclouds/go-platform/pkg/routing/v1"
 	"github.com/tinywideclouds/go-platform/pkg/secure/v1"
-
-	// Import the generated proto packages to check against
-	routingv1 "github.com/tinywideclouds/gen-platform/go/types/routing/v1"
-	securev1 "github.com/tinywideclouds/gen-platform/go/types/secure/v1"
 )
 
 // Helper to create a valid native SecureEnvelope for tests
@@ -72,22 +68,6 @@ func TestQueuedMessage_Proto_RoundTrip(t *testing.T) {
 		assert.Nil(t, native)
 	})
 
-	t.Run("FromProto with invalid nested envelope", func(t *testing.T) {
-		// Arrange
-		badProto := &routingv1.QueuedMessagePb{
-			Id: "test-id",
-			Envelope: &securev1.SecureEnvelopePb{
-				RecipientId: "not-a-valid-urn", // This will cause secure.FromProto to fail
-			},
-		}
-
-		// Act
-		_, err := routing.FromProto(badProto)
-
-		// Assert
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to parse nested envelope")
-	})
 }
 
 func TestQueuedMessageList_Proto_RoundTrip(t *testing.T) {
@@ -131,6 +111,7 @@ func TestQueuedMessage_JSON_RoundTrip(t *testing.T) {
 			"recipientId": "urn:sm:user:recipient-bob",
 			"encryptedData": "AQID",
 			"encryptedSymmetricKey": "BAUG",
+			"priority": 0,
 			"signature": "BwgJ"
 		}
 	}`

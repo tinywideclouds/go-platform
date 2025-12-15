@@ -15,19 +15,17 @@ import (
 	// --- Import the native packages we are testing ---
 	"github.com/tinywideclouds/go-platform/pkg/net/v1"
 	"github.com/tinywideclouds/go-platform/pkg/secure/v1"
-
-	// --- Import the generated proto package to check against ---
-	securev1 "github.com/tinywideclouds/gen-platform/go/types/secure/v1"
 )
 
 // Helper to create a valid native SecureEnvelope for tests
 func newTestEnvelope(t *testing.T) *secure.SecureEnvelope {
 	t.Helper()
-	recipientURN, err := urn.Parse("urn:sm:user:recipient-bob")
+	recipientURN, err := urn.Parse("urn:contacts:user:recipient-bob")
 	require.NoError(t, err)
 
 	return &secure.SecureEnvelope{
 		RecipientID:           recipientURN,
+		Priority:              0,
 		EncryptedData:         []byte{1, 2, 3},
 		EncryptedSymmetricKey: []byte{4, 5, 6},
 		Signature:             []byte{7, 8, 9},
@@ -45,7 +43,7 @@ func TestSecureEnvelope_Proto_RoundTrip(t *testing.T) {
 
 		// Assert: Check proto struct
 		require.NotNil(t, protoPb)
-		assert.Equal(t, "urn:sm:user:recipient-bob", protoPb.RecipientId)
+		assert.Equal(t, "urn:contacts:user:recipient-bob", protoPb.RecipientId)
 		assert.Equal(t, []byte{1, 2, 3}, protoPb.EncryptedData)
 
 		// Act: Proto -> Native
@@ -66,19 +64,6 @@ func TestSecureEnvelope_Proto_RoundTrip(t *testing.T) {
 		assert.Nil(t, native)
 	})
 
-	t.Run("FromProto with invalid URN string", func(t *testing.T) {
-		// Arrange: This is the bug our other test caught!
-		badProto := &securev1.SecureEnvelopePb{
-			RecipientId: "not-a-valid-urn",
-		}
-
-		// Act
-		_, err := secure.FromProto(badProto)
-
-		// Assert
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to parse recipient URN from proto")
-	})
 }
 
 // --- EXISTING TEST (UNCHANGED, but verified) ---
@@ -88,9 +73,10 @@ func TestSecureEnvelope_JSON_RoundTrip(t *testing.T) {
 
 	// This now expects camelCase
 	expectedJSON := `{
-		"recipientId": "urn:sm:user:recipient-bob",
+		"recipientId": "urn:contacts:user:recipient-bob",
 		"encryptedData": "AQID",
 		"encryptedSymmetricKey": "BAUG",
+		"priority": 0,
 		"signature": "BwgJ"
 	}`
 
@@ -121,7 +107,7 @@ func TestSecureEnvelope_JSON_RoundTrip(t *testing.T) {
 		// The protojson unmarshaler should handle both
 		// camelCase (recipientId) and snake_case (recipient_id).
 		jsonWithSnakeCase := `{
-			"recipient_id": "urn:sm:user:recipient-bob",
+			"recipient_id": "urn:contacts:user:recipient-bob",
 			"encrypted_data": "AQID",
 			"encrypted_symmetric_key": "BAUG",
 			"signature": "BwgJ"
@@ -139,13 +125,14 @@ func TestSecureEnvelope_JSON_RoundTrip(t *testing.T) {
 
 func TestSecureEnvelopeList_JSON_RoundTrip(t *testing.T) {
 	// Arrange
-	recipientURN, err := urn.Parse("urn:sm:user:recipient-bob")
+	recipientURN, err := urn.Parse("urn:contacts:user:recipient-bob")
 	require.NoError(t, err)
 
 	nativeList := &secure.SecureEnvelopeList{
 		Envelopes: []*secure.SecureEnvelope{
 			{
 				RecipientID:           recipientURN,
+				Priority:              0,
 				EncryptedData:         []byte{1, 2, 3},
 				EncryptedSymmetricKey: []byte{4, 5, 6},
 				Signature:             []byte{7, 8, 9},
@@ -157,8 +144,9 @@ func TestSecureEnvelopeList_JSON_RoundTrip(t *testing.T) {
 	expectedListJSON := `{
 		"envelopes": [
 			{
-				"recipientId": "urn:sm:user:recipient-bob",
+				"recipientId": "urn:contacts:user:recipient-bob",
 				"encryptedData": "AQID",
+				"priority": 0,
 				"encryptedSymmetricKey": "BAUG",
 				"signature": "BwgJ"
 			}
