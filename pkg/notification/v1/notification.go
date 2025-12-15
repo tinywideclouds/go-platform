@@ -6,30 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
-	smv1 "github.com/tinywideclouds/gen-platform/go/types/notification/v1"
+	nv1 "github.com/tinywideclouds/gen-platform/go/types/notification/v1"
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
 )
 
-// --- Marshal/Unmarshal Options ---
-var (
-	// protojsonMarshalOptions tells protojson to use camelCase (not proto_names)
-	protojsonMarshalOptions = &protojson.MarshalOptions{
-		UseProtoNames:   false,
-		EmitUnpopulated: false,
-	}
-
-	// protojsonUnmarshalOptions tells protojson to ignore unknown fields.
-	protojsonUnmarshalOptions = &protojson.UnmarshalOptions{
-		DiscardUnknown: true,
-	}
-)
-
 // Re-export the Protobuf types.
-type NotificationRequestPb = smv1.NotificationRequestPb
-type WebPushSubscriptionPb = smv1.WebPushSubscriptionPb
-type NotificationRequestPbContent = smv1.NotificationRequestPb_Content
+type NotificationRequestPb = nv1.NotificationRequestPb
+type WebPushSubscriptionPb = nv1.WebPushSubscriptionPb
+type NotificationRequestPbContent = nv1.NotificationRequestPb_Content
 
 // WebPushSubscription represents a push notification token for a user's browser.
 // This matches the W3C standard and the new Proto definition.
@@ -75,7 +59,7 @@ func NotificationRequestToProto(nativeReq *NotificationRequest) *NotificationReq
 	return &NotificationRequestPb{
 		RecipientId: nativeReq.RecipientID.String(),
 		// Tokens are intentionally omitted as they are not part of the Request Proto
-		Content: &smv1.NotificationRequestPb_Content{
+		Content: &nv1.NotificationRequestPb_Content{
 			Title: nativeReq.Content.Title,
 			Body:  nativeReq.Content.Body,
 			Sound: nativeReq.Content.Sound,
@@ -144,10 +128,10 @@ func (nr *NotificationRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func jsonMarshal(v interface{}) ([]byte, error) {
+func jsonMarshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func jsonUnmarshal(data []byte, v interface{}) error {
+func jsonUnmarshal(data []byte, v any) error {
 	return json.Unmarshal(data, v)
 }
