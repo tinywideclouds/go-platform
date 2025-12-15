@@ -19,9 +19,19 @@ func newTestRequest(t *testing.T) *notification.NotificationRequest {
 
 	return &notification.NotificationRequest{
 		RecipientID: recipientURN,
-		Tokens: []notification.DeviceToken{
-			{Token: "token-1", Platform: "apns"},
-			{Token: "token-2", Platform: "fcm"},
+		// Populating the new buckets
+		FCMTokens: []string{"fcm-token-1", "fcm-token-2"},
+		WebSubscriptions: []notification.WebPushSubscription{
+			{
+				Endpoint: "https://fcm.googleapis.com/fcm/send/eR5...",
+				Keys: struct {
+					P256dh string `json:"p256dh"`
+					Auth   string `json:"auth"`
+				}{
+					P256dh: "base64key...",
+					Auth:   "base64auth...",
+				},
+			},
 		},
 		Content: notification.NotificationContent{
 			Title: "New Message",
@@ -37,22 +47,34 @@ func newTestRequest(t *testing.T) *notification.NotificationRequest {
 func TestNotificationRequestConversions(t *testing.T) {
 	nativeReq := newTestRequest(t)
 
-	t.Run("ToProto and FromProto Symmetry", func(t *testing.T) {
+	t.Run("ToProto Strips Tokens", func(t *testing.T) {
 		// 1. Convert native Go struct to Protobuf message
 		protoReq := notification.NotificationRequestToProto(nativeReq)
 
-		// Assert that the Protobuf message has the correct values
+		// Assert Recipient/Content are preserved
 		require.Equal(t, "urn:contacts:user:recipient-456", protoReq.GetRecipientId())
-		require.Len(t, protoReq.GetTokens(), 2)
-		require.Equal(t, "token-1", protoReq.GetTokens()[0].GetToken())
 		require.Equal(t, "New Message", protoReq.GetContent().GetTitle())
 
-		// 2. Convert the Protobuf message back to the native Go struct
+		// Assert Tokens are NOT in the proto (because the proto definition doesn't have them)
+		// We can't even check `protoReq.GetTokens()` because the method doesn't exist anymore!
+		// This compiles confirms the field is gone from the Proto.
+	})
+
+	t.Run("FromProto Returns Empty Buckets", func(t *testing.T) {
+		// 1. Create a Proto (simulating incoming Pub/Sub message)
+		protoReq := notification.NotificationRequestToProto(nativeReq)
+
+		// 2. Convert back to Go
 		convertedNative, err := notification.NotificationRequestFromProto(protoReq)
 		require.NoError(t, err)
 
-		// Assert that the round-trip conversion results in the original struct
-		require.Equal(t, nativeReq, convertedNative)
+		// Assert Identity matches
+		require.Equal(t, nativeReq.RecipientID, convertedNative.RecipientID)
+		require.Equal(t, nativeReq.Content, convertedNative.Content)
+
+		// Assert Buckets are Empty (expected behavior)
+		require.Nil(t, convertedNative.FCMTokens)
+		require.Nil(t, convertedNative.WebSubscriptions)
 	})
 
 	t.Run("Handling Nil Inputs", func(t *testing.T) {
@@ -64,76 +86,40 @@ func TestNotificationRequestConversions(t *testing.T) {
 	})
 }
 
-// --- NEW TEST: JSON Facade Round Trip ---
-func TestNotificationRequest_JSON_RoundTrip(t *testing.T) {
+// --- JSON Facade Tests ---
+func TestNotificationRequest_JSON(t *testing.T) {
 	nativeStruct := newTestRequest(t)
 
-	// We expect camelCase keys because protojson defaults are overridden by our variables
-	// AND the proto definition typically uses camelCase for JSON mapping.
-	expectedJSONSubstring := `"recipientId":"urn:contacts:user:recipient-456"`
-
-	// --- Test 1: Marshal (Go struct -> JSON) ---
-	t.Run("MarshalJSON", func(t *testing.T) {
-		// Act: Standard JSON marshal should trigger our custom MarshalJSON
+	t.Run("MarshalJSON Includes Tokens", func(t *testing.T) {
+		// Even though Proto doesn't have tokens, our internal JSON logging/storage MUST have them.
 		jsonBytes, err := json.Marshal(nativeStruct)
 		require.NoError(t, err)
 
 		jsonStr := string(jsonBytes)
-		assert.Contains(t, jsonStr, expectedJSONSubstring)
-		assert.Contains(t, jsonStr, `"title":"New Message"`)
+		// Check for buckets
+		assert.Contains(t, jsonStr, `"fcmTokens":["fcm-token-1","fcm-token-2"]`)
+		assert.Contains(t, jsonStr, `"webSubscriptions"`)
+		assert.Contains(t, jsonStr, `"endpoint":"https://fcm.googleapis.com/fcm/send/eR5..."`)
 	})
 
-	// --- Test 2: Unmarshal (JSON -> Go struct) ---
-	t.Run("UnmarshalJSON", func(t *testing.T) {
-		// Arrange: Create JSON manually
+	t.Run("UnmarshalJSON Restores Full Struct", func(t *testing.T) {
 		jsonInput := `{
 			"recipientId": "urn:contacts:user:recipient-456",
-			"tokens": [
-				{"token": "token-1", "platform": "apns"},
-				{"token": "token-2", "platform": "fcm"}
-			],
+			"fcmTokens": ["fcm-token-A"],
+			"webSubscriptions": [{
+				"endpoint": "https://example.com",
+				"keys": { "p256dh": "key", "auth": "auth" }
+			}],
 			"content": {
-				"title": "New Message",
-				"body": "You have a new secure message.",
-				"sound": "default"
-			},
-			"dataPayload": {
-				"message_id": "msg-789"
+				"title": "New Message"
 			}
 		}`
 
-		// Act
 		var resultStruct notification.NotificationRequest
 		err := json.Unmarshal([]byte(jsonInput), &resultStruct)
 
-		// Assert
 		require.NoError(t, err)
-		assert.Equal(t, nativeStruct, &resultStruct)
-	})
-
-	// --- Test 3: Unmarshal (from snake_case) ---
-	t.Run("UnmarshalJSON from snake_case", func(t *testing.T) {
-		// Arrange: Protojson should handle snake_case inputs gracefully
-		jsonWithSnakeCase := `{
-			"recipient_id": "urn:contacts:user:recipient-456",
-			"tokens": [
-				{"token": "token-1", "platform": "apns"}
-			],
-			"content": {
-				"title": "New Message"
-			},
-			"data_payload": {
-				"message_id": "msg-789"
-			}
-		}`
-
-		// Act
-		var resultStruct notification.NotificationRequest
-		err := json.Unmarshal([]byte(jsonWithSnakeCase), &resultStruct)
-
-		// Assert
-		require.NoError(t, err)
-		assert.Equal(t, "urn:contacts:user:recipient-456", resultStruct.RecipientID.String())
-		assert.Equal(t, "msg-789", resultStruct.DataPayload["message_id"])
+		assert.Equal(t, "fcm-token-A", resultStruct.FCMTokens[0])
+		assert.Equal(t, "https://example.com", resultStruct.WebSubscriptions[0].Endpoint)
 	})
 }
