@@ -18,8 +18,8 @@ type WebPushSubscriptionPb = nv1.WebPushSubscriptionPb
 type WebPushSubscription struct {
 	Endpoint string `json:"endpoint"`
 	Keys     struct {
-		P256dh string `json:"p256dh"`
-		Auth   string `json:"auth"`
+		P256dh []byte `json:"p256dh"`
+		Auth   []byte `json:"auth"`
 	} `json:"keys"`
 }
 

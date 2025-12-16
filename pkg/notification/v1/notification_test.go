@@ -25,11 +25,11 @@ func newTestRequest(t *testing.T) *notification.NotificationRequest {
 			{
 				Endpoint: "https://fcm.googleapis.com/fcm/send/eR5...",
 				Keys: struct {
-					P256dh string `json:"p256dh"`
-					Auth   string `json:"auth"`
+					P256dh []byte `json:"p256dh"`
+					Auth   []byte `json:"auth"`
 				}{
-					P256dh: "base64key",
-					Auth:   "base64auth",
+					P256dh: []byte("test-key"),
+					Auth:   []byte("test-auth"),
 				},
 			},
 		},
@@ -51,11 +51,11 @@ func TestWebPushSubscription_JSON_Facade(t *testing.T) {
 	original := notification.WebPushSubscription{
 		Endpoint: "https://push.example.com/123",
 		Keys: struct {
-			P256dh string `json:"p256dh"`
-			Auth   string `json:"auth"`
+			P256dh []byte `json:"p256dh"`
+			Auth   []byte `json:"auth"`
 		}{
-			P256dh: "dGVzdC1rZXk=", // "test-key"
-			Auth:   "dGVzdC1hdXRo", // "test-auth"
+			P256dh: []byte("test-key"),  // Raw bytes
+			Auth:   []byte("test-auth"), // Raw bytes
 		},
 	}
 
