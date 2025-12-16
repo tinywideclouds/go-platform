@@ -1,5 +1,4 @@
 // --- File: pkg/notification/v1/notification.go ---
-// Package notification provides Go-native wrappers for Protobuf message types.
 package notification
 
 import (
@@ -7,15 +6,15 @@ import (
 
 	nv1 "github.com/tinywideclouds/gen-platform/go/types/notification/v1"
 	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // Re-export the Protobuf types.
 type NotificationRequestPb = nv1.NotificationRequestPb
 type WebPushSubscriptionPb = nv1.WebPushSubscriptionPb
-type NotificationRequestPbContent = nv1.NotificationRequestPb_Content
 
-// WebPushSubscription represents a push notification token for a user's browser.
-// This matches the W3C standard and the new Proto definition.
+// --- Domain Structs ---
+
 type WebPushSubscription struct {
 	Endpoint string `json:"endpoint"`
 	Keys     struct {
@@ -24,40 +23,65 @@ type WebPushSubscription struct {
 	} `json:"keys"`
 }
 
-// NotificationContent holds the user-facing content of a push notification.
 type NotificationContent struct {
 	Title string `json:"title"`
 	Body  string `json:"body"`
 	Sound string `json:"sound"`
 }
 
-// NotificationRequest is the Go-native representation of a push notification job.
-// It holds the "Fan-Out" buckets which are populated by the TokenStore lookup.
+// ... (NotificationRequest remains unchanged) ...
 type NotificationRequest struct {
-	RecipientID urn.URN `json:"recipientId"`
-
-	// Bucket A: Mobile (Simple Strings for Firebase)
-	FCMTokens []string `json:"fcmTokens"`
-
-	// Bucket B: Web (Complex Objects for VAPID)
+	RecipientID      urn.URN               `json:"recipientId"`
+	FCMTokens        []string              `json:"fcmTokens"`
 	WebSubscriptions []WebPushSubscription `json:"webSubscriptions"`
-
-	Content     NotificationContent `json:"content"`
-	DataPayload map[string]string   `json:"dataPayload"`
+	Content          NotificationContent   `json:"content"`
+	DataPayload      map[string]string     `json:"dataPayload"`
 }
 
-// NotificationRequestToProto converts a native NotificationRequest struct to its
-// Protobuf representation.
-// NOTE: This conversion is strictly for the Wire Protocol (Pub/Sub).
-// Tokens are NOT included in the Proto, so they are not mapped here.
+// --- FACADE PATTERN IMPLEMENTATION ---
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// It uses protojson to parse the wire format strictly, then maps it to the domain struct.
+func (w *WebPushSubscription) UnmarshalJSON(data []byte) error {
+	var pb nv1.WebPushSubscriptionPb
+
+	// 1. Use protojson to parse the wire format (handling Base64, etc.)
+	// We use DiscardUnknown to allow forward compatibility.
+	opts := protojson.UnmarshalOptions{DiscardUnknown: true}
+	if err := opts.Unmarshal(data, &pb); err != nil {
+		return err
+	}
+
+	// 2. Map Proto -> Domain
+	w.Endpoint = pb.GetEndpoint()
+	w.Keys.P256dh = pb.GetP256Dh()
+	w.Keys.Auth = pb.GetAuth()
+
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface.
+// It maps the domain struct to the Proto, then uses protojson to generate the wire format.
+func (w WebPushSubscription) MarshalJSON() ([]byte, error) {
+	// 1. Map Domain -> Proto
+	pb := &nv1.WebPushSubscriptionPb{
+		Endpoint: w.Endpoint,
+		P256Dh:   w.Keys.P256dh,
+		Auth:     w.Keys.Auth,
+	}
+
+	// 2. Use protojson to generate JSON
+	opts := protojson.MarshalOptions{UseProtoNames: false, EmitUnpopulated: false}
+	return opts.Marshal(pb)
+}
+
+// ... (Existing NotificationRequestToProto / FromProto functions remain unchanged) ...
 func NotificationRequestToProto(nativeReq *NotificationRequest) *NotificationRequestPb {
 	if nativeReq == nil {
 		return nil
 	}
-
 	return &NotificationRequestPb{
 		RecipientId: nativeReq.RecipientID.String(),
-		// Tokens are intentionally omitted as they are not part of the Request Proto
 		Content: &nv1.NotificationRequestPb_Content{
 			Title: nativeReq.Content.Title,
 			Body:  nativeReq.Content.Body,
@@ -67,19 +91,14 @@ func NotificationRequestToProto(nativeReq *NotificationRequest) *NotificationReq
 	}
 }
 
-// NotificationRequestFromProto converts a Protobuf NotificationRequestPb message to its
-// Go-native representation.
-// NOTE: The resulting struct will have empty Token buckets, meant to be populated later.
 func NotificationRequestFromProto(protoReq *NotificationRequestPb) (*NotificationRequest, error) {
 	if protoReq == nil {
 		return nil, nil
 	}
-
 	recipientURN, err := urn.Parse(protoReq.GetRecipientId())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse recipient URN: %w", err)
 	}
-
 	var nativeContent NotificationContent
 	if protoReq.GetContent() != nil {
 		nativeContent = NotificationContent{
@@ -88,10 +107,8 @@ func NotificationRequestFromProto(protoReq *NotificationRequestPb) (*Notificatio
 			Sound: protoReq.GetContent().GetSound(),
 		}
 	}
-
 	return &NotificationRequest{
-		RecipientID: recipientURN,
-		// Token buckets initialized as nil/empty
+		RecipientID:      recipientURN,
 		FCMTokens:        nil,
 		WebSubscriptions: nil,
 		Content:          nativeContent,

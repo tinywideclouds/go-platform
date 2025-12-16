@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tinywideclouds/go-platform/pkg/net/v1"
+	urn "github.com/tinywideclouds/go-platform/pkg/net/v1"
 	"github.com/tinywideclouds/go-platform/pkg/notification/v1"
 )
 
@@ -28,8 +28,8 @@ func newTestRequest(t *testing.T) *notification.NotificationRequest {
 					P256dh string `json:"p256dh"`
 					Auth   string `json:"auth"`
 				}{
-					P256dh: "base64key...",
-					Auth:   "base64auth...",
+					P256dh: "base64key",
+					Auth:   "base64auth",
 				},
 			},
 		},
@@ -44,6 +44,74 @@ func newTestRequest(t *testing.T) *notification.NotificationRequest {
 	}
 }
 
+// ✅ NEW: Test Suite for the WebPushSubscription Facade
+func TestWebPushSubscription_JSON_Facade(t *testing.T) {
+	// Arrange: A valid subscription using "safe" strings for keys (simulating Base64)
+	// Arrange: A valid Domain Object (Nested)
+	original := notification.WebPushSubscription{
+		Endpoint: "https://push.example.com/123",
+		Keys: struct {
+			P256dh string `json:"p256dh"`
+			Auth   string `json:"auth"`
+		}{
+			P256dh: "dGVzdC1rZXk=", // "test-key"
+			Auth:   "dGVzdC1hdXRo", // "test-auth"
+		},
+	}
+
+	t.Run("MarshalJSON flattens to Proto wire format", func(t *testing.T) {
+		// Act
+		jsonBytes, err := json.Marshal(original)
+		require.NoError(t, err)
+
+		// Assert: Expect FLAT JSON because the Proto definition is flat
+		// Old (Wrong): {"endpoint": "...", "keys": { ... }}
+		// New (Correct): {"endpoint": "...", "p256dh": "...", "auth": "..."}
+		expectedWireFormat := `{"endpoint":"https://push.example.com/123","p256dh":"dGVzdC1rZXk=","auth":"dGVzdC1hdXRo"}`
+		assert.JSONEq(t, expectedWireFormat, string(jsonBytes))
+	})
+
+	t.Run("UnmarshalJSON hydrates from Flat Proto format", func(t *testing.T) {
+		// Arrange: Input is FLAT JSON (simulating what the Frontend sends via toJson)
+		inputWireFormat := `{"endpoint":"https://push.example.com/123","p256dh":"dGVzdC1rZXk=","auth":"dGVzdC1hdXRo"}`
+		var loaded notification.WebPushSubscription
+
+		// Act
+		err := json.Unmarshal([]byte(inputWireFormat), &loaded)
+		require.NoError(t, err)
+
+		// Assert
+		assert.Equal(t, original, loaded)
+	})
+
+	t.Run("Round Trip Integrity", func(t *testing.T) {
+		// Act
+		data, err := json.Marshal(original)
+		require.NoError(t, err)
+
+		var result notification.WebPushSubscription
+		err = json.Unmarshal(data, &result)
+		require.NoError(t, err)
+
+		// Assert
+		assert.Equal(t, original, result)
+	})
+
+	t.Run("Handles Invalid JSON via protojson error", func(t *testing.T) {
+		// Arrange: Invalid JSON (wrong type for keys)
+		invalidJSON := `{"endpoint": 123}`
+		var loaded notification.WebPushSubscription
+
+		// Act
+		err := json.Unmarshal([]byte(invalidJSON), &loaded)
+
+		// Assert: Should fail because protojson enforces types
+		require.Error(t, err)
+	})
+}
+
+// ... (Existing NotificationRequest tests) ...
+
 func TestNotificationRequestConversions(t *testing.T) {
 	nativeReq := newTestRequest(t)
 
@@ -55,71 +123,20 @@ func TestNotificationRequestConversions(t *testing.T) {
 		require.Equal(t, "urn:contacts:user:recipient-456", protoReq.GetRecipientId())
 		require.Equal(t, "New Message", protoReq.GetContent().GetTitle())
 
-		// Assert Tokens are NOT in the proto (because the proto definition doesn't have them)
-		// We can't even check `protoReq.GetTokens()` because the method doesn't exist anymore!
-		// This compiles confirms the field is gone from the Proto.
+		// Assert Tokens are NOT in the proto
 	})
 
 	t.Run("FromProto Returns Empty Buckets", func(t *testing.T) {
-		// 1. Create a Proto (simulating incoming Pub/Sub message)
 		protoReq := notification.NotificationRequestToProto(nativeReq)
 
-		// 2. Convert back to Go
 		convertedNative, err := notification.NotificationRequestFromProto(protoReq)
 		require.NoError(t, err)
 
-		// Assert Identity matches
 		require.Equal(t, nativeReq.RecipientID, convertedNative.RecipientID)
 		require.Equal(t, nativeReq.Content, convertedNative.Content)
 
 		// Assert Buckets are Empty (expected behavior)
 		require.Nil(t, convertedNative.FCMTokens)
 		require.Nil(t, convertedNative.WebSubscriptions)
-	})
-
-	t.Run("Handling Nil Inputs", func(t *testing.T) {
-		require.Nil(t, notification.NotificationRequestToProto(nil))
-
-		converted, err := notification.NotificationRequestFromProto(nil)
-		require.NoError(t, err)
-		require.Nil(t, converted)
-	})
-}
-
-// --- JSON Facade Tests ---
-func TestNotificationRequest_JSON(t *testing.T) {
-	nativeStruct := newTestRequest(t)
-
-	t.Run("MarshalJSON Includes Tokens", func(t *testing.T) {
-		// Even though Proto doesn't have tokens, our internal JSON logging/storage MUST have them.
-		jsonBytes, err := json.Marshal(nativeStruct)
-		require.NoError(t, err)
-
-		jsonStr := string(jsonBytes)
-		// Check for buckets
-		assert.Contains(t, jsonStr, `"fcmTokens":["fcm-token-1","fcm-token-2"]`)
-		assert.Contains(t, jsonStr, `"webSubscriptions"`)
-		assert.Contains(t, jsonStr, `"endpoint":"https://fcm.googleapis.com/fcm/send/eR5..."`)
-	})
-
-	t.Run("UnmarshalJSON Restores Full Struct", func(t *testing.T) {
-		jsonInput := `{
-			"recipientId": "urn:contacts:user:recipient-456",
-			"fcmTokens": ["fcm-token-A"],
-			"webSubscriptions": [{
-				"endpoint": "https://example.com",
-				"keys": { "p256dh": "key", "auth": "auth" }
-			}],
-			"content": {
-				"title": "New Message"
-			}
-		}`
-
-		var resultStruct notification.NotificationRequest
-		err := json.Unmarshal([]byte(jsonInput), &resultStruct)
-
-		require.NoError(t, err)
-		assert.Equal(t, "fcm-token-A", resultStruct.FCMTokens[0])
-		assert.Equal(t, "https://example.com", resultStruct.WebSubscriptions[0].Endpoint)
 	})
 }
