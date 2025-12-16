@@ -3,7 +3,6 @@
 package notification
 
 import (
-	"encoding/json"
 	"fmt"
 
 	nv1 "github.com/tinywideclouds/gen-platform/go/types/notification/v1"
@@ -98,40 +97,4 @@ func NotificationRequestFromProto(protoReq *NotificationRequestPb) (*Notificatio
 		Content:          nativeContent,
 		DataPayload:      protoReq.GetDataPayload(),
 	}, nil
-}
-
-// --- JSON METHODS ---
-
-// MarshalJSON implements the json.Marshaler interface.
-// We use default JSON marshaling for the struct because the Proto no longer
-// contains all the fields (tokens). If we used protojson here, we would lose
-// the tokens in our logs/storage.
-//
-// However, if strict Proto compliance is required for the *wire* fields,
-// we generally trust the struct tags defined above.
-func (nr NotificationRequest) MarshalJSON() ([]byte, error) {
-	// We deliberately DO NOT use protojson here for the full struct,
-	// because NotificationRequest contains data (Tokens) that the Proto definition lacks.
-	// We use standard Go JSON marshaling via a type alias to avoid infinite recursion.
-	type Alias NotificationRequest
-	return jsonMarshal(Alias(nr))
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface.
-func (nr *NotificationRequest) UnmarshalJSON(data []byte) error {
-	type Alias NotificationRequest
-	aux := &Alias{}
-	if err := jsonUnmarshal(data, aux); err != nil {
-		return err
-	}
-	*nr = NotificationRequest(*aux)
-	return nil
-}
-
-func jsonMarshal(v any) ([]byte, error) {
-	return json.Marshal(v)
-}
-
-func jsonUnmarshal(data []byte, v any) error {
-	return json.Unmarshal(data, v)
 }
